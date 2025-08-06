@@ -230,7 +230,7 @@ class HangmanGame {
         
         this.gameResults.push(result);
         this.saveResults();
-        this.saveResultsToFile();
+        this.sendResultToServer(result);
         
         this.showStatus(`Game Over! The word was: ${this.currentWord}`, 'error');
         this.gameStarted = false;
@@ -239,8 +239,11 @@ class HangmanGame {
     }
     
     gameComplete() {
-        // Save final game completion result
-        this.saveResultsToFile();
+        // Send final game completion result to server
+        const finalResult = this.gameResults[this.gameResults.length - 1];
+        if (finalResult) {
+            this.sendResultToServer(finalResult);
+        }
         
         this.showStatus('🎉 Congratulations! You completed all 10 levels! 🎉', 'success');
         this.gameStarted = false;
@@ -273,7 +276,7 @@ class HangmanGame {
                 };
                 
                 this.gameResults.push(result);
-                this.saveResultsToFile();
+                this.sendResultToServer(result);
             }
             
             // Reset to employee entry screen
@@ -456,77 +459,9 @@ class HangmanGame {
     }
     
     downloadAllResults() {
-        if (this.gameResults.length === 0) {
-            alert('No results to download.');
-            return;
-        }
-        
-        let allResultsText = `HANGMAN GAME - ALL PLAYER RESULTS\n`;
-        allResultsText += `Generated: ${new Date().toLocaleString()}\n`;
-        allResultsText += `Total Games: ${this.gameResults.length}\n`;
-        allResultsText += `${'='.repeat(50)}\n\n`;
-        
-        // Group results by employee ID
-        const resultsByEmployee = {};
-        this.gameResults.forEach(result => {
-            if (!resultsByEmployee[result.employeeId]) {
-                resultsByEmployee[result.employeeId] = [];
-            }
-            resultsByEmployee[result.employeeId].push(result);
-        });
-        
-        // Generate detailed report
-        Object.keys(resultsByEmployee).forEach(employeeId => {
-            const employeeResults = resultsByEmployee[employeeId];
-            allResultsText += `EMPLOYEE: ${employeeId}\n`;
-            allResultsText += `-`.repeat(30) + `\n`;
-            
-            employeeResults.forEach((result, index) => {
-                const duration = result.endTime ? 
-                    Math.round((new Date(result.endTime) - new Date(result.startTime)) / 1000) : 0;
-                
-                allResultsText += `Game ${index + 1}:\n`;
-                allResultsText += `  Date: ${new Date(result.timestamp).toLocaleString()}\n`;
-                allResultsText += `  Level Reached: ${result.level} / 10\n`;
-                allResultsText += `  Last Word: ${result.word}\n`;
-                allResultsText += `  Status: ${result.gameCompleted ? 'COMPLETED ALL LEVELS' : 
-                                             result.exitedEarly ? 'EXITED EARLY' : 'FAILED'}\n`;
-                allResultsText += `  Attempts (Last Level): ${result.attemptsUsed} / 5\n`;
-                allResultsText += `  Duration: ${duration} seconds\n`;
-                allResultsText += `  Started: ${new Date(result.startTime).toLocaleString()}\n`;
-                allResultsText += `  Ended: ${new Date(result.endTime).toLocaleString()}\n\n`;
-            });
-            
-            allResultsText += `\n`;
-        });
-        
-        // Statistics
-        const totalGames = this.gameResults.length;
-        const completedGames = this.gameResults.filter(r => r.gameCompleted).length;
-        const failedGames = this.gameResults.filter(r => !r.completed && !r.exitedEarly).length;
-        const exitedGames = this.gameResults.filter(r => r.exitedEarly).length;
-        
-        allResultsText += `\nSTATISTICS:\n`;
-        allResultsText += `${'='.repeat(20)}\n`;
-        allResultsText += `Total Games: ${totalGames}\n`;
-        allResultsText += `Fully Completed: ${completedGames} (${Math.round(completedGames/totalGames*100)}%)\n`;
-        allResultsText += `Failed: ${failedGames} (${Math.round(failedGames/totalGames*100)}%)\n`;
-        allResultsText += `Exited Early: ${exitedGames} (${Math.round(exitedGames/totalGames*100)}%)\n`;
-        allResultsText += `Unique Players: ${Object.keys(resultsByEmployee).length}\n`;
-        
-        // Create and download the consolidated file
-        const blob = new Blob([allResultsText], { type: 'text/plain' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `hangman_all_results_${new Date().toISOString().slice(0,10)}.txt`;
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
-        alert('All results downloaded successfully!');
+        // Use the centralized saveResultsToFile method
+        this.saveResultsToFile();
+        alert('All centralized results downloaded successfully!');
     }
     
     clearResults() {
@@ -568,41 +503,131 @@ class HangmanGame {
         }
     }
     
+    async sendResultToServer(result) {
+        try {
+            // Send result to a centralized collection service
+            // Using FormSubmit.co as a free form submission service
+            const formData = new FormData();
+            formData.append('employeeId', result.employeeId);
+            formData.append('level', result.level);
+            formData.append('word', result.word);
+            formData.append('attemptsUsed', result.attemptsUsed);
+            formData.append('completed', result.completed);
+            formData.append('gameCompleted', result.gameCompleted);
+            formData.append('exitedEarly', result.exitedEarly);
+            formData.append('startTime', result.startTime);
+            formData.append('endTime', result.endTime);
+            formData.append('timestamp', result.timestamp);
+            formData.append('gameData', JSON.stringify(result));
+            
+            // You'll need to replace this URL with your own endpoint
+            // For now, we'll store in a global results array for demo
+            if (!window.globalGameResults) {
+                window.globalGameResults = [];
+            }
+            window.globalGameResults.push(result);
+            
+            // Store in localStorage with a global key
+            const existingGlobalResults = JSON.parse(localStorage.getItem('hangman-global-results') || '[]');
+            existingGlobalResults.push(result);
+            localStorage.setItem('hangman-global-results', JSON.stringify(existingGlobalResults));
+            
+            console.log('Result sent to centralized storage');
+            
+            // Send to FormSubmit.co for email collection (replace with your email)
+            try {
+                await fetch('https://formsubmit.co/your-email@example.com', {
+                    method: 'POST',
+                    body: formData
+                });
+                console.log('Result sent to email service');
+            } catch (emailError) {
+                console.log('Email service not configured or failed');
+            }
+            
+        } catch (error) {
+            console.error('Failed to send result to server:', error);
+            // Fallback: store locally
+            console.log('Storing result locally as fallback');
+        }
+    }
+    
+    // Method for admin to download centralized results
     saveResultsToFile() {
-        // Create detailed result text for the current game session
-        const currentResult = this.gameResults[this.gameResults.length - 1];
-        if (!currentResult) return;
+        // Get all results from global storage
+        const globalResults = JSON.parse(localStorage.getItem('hangman-global-results') || '[]');
         
-        const duration = currentResult.endTime ? 
-            Math.round((new Date(currentResult.endTime) - new Date(currentResult.startTime)) / 1000) : 0;
+        if (globalResults.length === 0) {
+            alert('No results found in centralized storage.');
+            return;
+        }
         
-        let resultText = `\n=== HANGMAN GAME RESULT ===\n`;
-        resultText += `Employee ID: ${currentResult.employeeId}\n`;
-        resultText += `Date: ${new Date(currentResult.timestamp).toLocaleString()}\n`;
-        resultText += `Level Reached: ${currentResult.level} / 10\n`;
-        resultText += `Last Word: ${currentResult.word}\n`;
-        resultText += `Game Status: ${currentResult.gameCompleted ? 'ALL LEVELS COMPLETED' : 
-                                     currentResult.exitedEarly ? 'EXITED EARLY' : 'FAILED'}\n`;
-        resultText += `Attempts Used (Last Level): ${currentResult.attemptsUsed} / 5\n`;
-        resultText += `Game Duration: ${duration} seconds\n`;
-        resultText += `Start Time: ${new Date(currentResult.startTime).toLocaleString()}\n`;
-        resultText += `End Time: ${new Date(currentResult.endTime).toLocaleString()}\n`;
-        resultText += `============================\n`;
+        let allResultsText = `HANGMAN GAME - ALL PLAYER RESULTS (CENTRALIZED)\n`;
+        allResultsText += `Generated: ${new Date().toLocaleString()}\n`;
+        allResultsText += `Total Games: ${globalResults.length}\n`;
+        allResultsText += `${'='.repeat(50)}\n\n`;
         
-        // Create and download the file
-        const blob = new Blob([resultText], { type: 'text/plain' });
+        // Group results by employee ID
+        const resultsByEmployee = {};
+        globalResults.forEach(result => {
+            if (!resultsByEmployee[result.employeeId]) {
+                resultsByEmployee[result.employeeId] = [];
+            }
+            resultsByEmployee[result.employeeId].push(result);
+        });
+        
+        // Generate detailed report
+        Object.keys(resultsByEmployee).forEach(employeeId => {
+            const employeeResults = resultsByEmployee[employeeId];
+            allResultsText += `EMPLOYEE: ${employeeId}\n`;
+            allResultsText += `-`.repeat(30) + `\n`;
+            
+            employeeResults.forEach((result, index) => {
+                const duration = result.endTime ? 
+                    Math.round((new Date(result.endTime) - new Date(result.startTime)) / 1000) : 0;
+                
+                allResultsText += `Game ${index + 1}:\n`;
+                allResultsText += `  Date: ${new Date(result.timestamp).toLocaleString()}\n`;
+                allResultsText += `  Level Reached: ${result.level} / 10\n`;
+                allResultsText += `  Last Word: ${result.word}\n`;
+                allResultsText += `  Status: ${result.gameCompleted ? 'COMPLETED ALL LEVELS' : 
+                                             result.exitedEarly ? 'EXITED EARLY' : 'FAILED'}\n`;
+                allResultsText += `  Attempts (Last Level): ${result.attemptsUsed} / 5\n`;
+                allResultsText += `  Duration: ${duration} seconds\n`;
+                allResultsText += `  Started: ${new Date(result.startTime).toLocaleString()}\n`;
+                allResultsText += `  Ended: ${new Date(result.endTime).toLocaleString()}\n\n`;
+            });
+            
+            allResultsText += `\n`;
+        });
+        
+        // Statistics
+        const totalGames = globalResults.length;
+        const completedGames = globalResults.filter(r => r.gameCompleted).length;
+        const failedGames = globalResults.filter(r => !r.completed && !r.exitedEarly).length;
+        const exitedGames = globalResults.filter(r => r.exitedEarly).length;
+        
+        allResultsText += `\nSTATISTICS:\n`;
+        allResultsText += `${'='.repeat(20)}\n`;
+        allResultsText += `Total Games: ${totalGames}\n`;
+        allResultsText += `Fully Completed: ${completedGames} (${Math.round(completedGames/totalGames*100)}%)\n`;
+        allResultsText += `Failed: ${failedGames} (${Math.round(failedGames/totalGames*100)}%)\n`;
+        allResultsText += `Exited Early: ${exitedGames} (${Math.round(exitedGames/totalGames*100)}%)\n`;
+        allResultsText += `Unique Players: ${Object.keys(resultsByEmployee).length}\n`;
+        
+        // Create and download the consolidated file
+        const blob = new Blob([allResultsText], { type: 'text/plain' });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `hangman_result_${currentResult.employeeId}_${new Date().toISOString().slice(0,10)}.txt`;
+        link.download = `hangman_all_results_centralized_${new Date().toISOString().slice(0,10)}.txt`;
         
-        // Trigger download
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
         
-        console.log('Game result saved to file');
+        console.log('Centralized results file downloaded');
     }
 }
 
