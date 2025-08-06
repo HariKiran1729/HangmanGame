@@ -16,6 +16,7 @@ class HangmanGame {
         this.gameStartTime = null;
         this.sessionToken = '';
         this.wordsApiUrl = window.obf ? window.obf.getApiUrl() : './words-api.html'; // URL to secure words API
+        this.googleSheetsUrl = 'https://script.google.com/macros/s/AKfycby8gXn5Vm-8Yur8QOXLX7NBsT4cU9lCbOuTAG5sWvvyVYz3ziVfbzWiuJxSKsbThBS-/exec'; // Replace with your Google Apps Script web app URL
         
         // No words stored locally - they will be fetched securely
         this.wordsAndHints = [];
@@ -628,7 +629,15 @@ class HangmanGame {
             
             console.log('Result sent to centralized storage');
             
-            // Send to FormSubmit.co for email collection (replace with your email)
+            // Send to Google Sheets for real-time updates
+            try {
+                await this.sendToGoogleSheets(result);
+                console.log('Result sent to Google Sheets');
+            } catch (sheetsError) {
+                console.log('Google Sheets service failed:', sheetsError);
+            }
+            
+            // Send to FormSubmit.co for email collection (backup)
             try {
                 await fetch('https://formsubmit.co/SaiBhyravaHariKiran.Cherukupalli@cognizant.com', {
                     method: 'POST',
@@ -722,6 +731,52 @@ class HangmanGame {
         window.URL.revokeObjectURL(url);
         
         console.log('Centralized results file downloaded');
+    }
+    
+    async sendToGoogleSheets(result) {
+        // Don't send if Google Sheets URL is not configured
+        if (!this.googleSheetsUrl || this.googleSheetsUrl.includes('YOUR_GOOGLE_SHEETS')) {
+            console.log('Google Sheets URL not configured');
+            return;
+        }
+        
+        try {
+            // Prepare data for Google Sheets
+            const formData = new FormData();
+            formData.append('employeeId', result.employeeId);
+            formData.append('level', result.level.toString());
+            formData.append('word', result.word);
+            formData.append('attemptsUsed', result.attemptsUsed.toString());
+            formData.append('completed', result.completed.toString());
+            formData.append('gameCompleted', result.gameCompleted.toString());
+            formData.append('exitedEarly', result.exitedEarly.toString());
+            formData.append('startTime', result.startTime);
+            formData.append('endTime', result.endTime);
+            formData.append('timestamp', result.timestamp);
+            
+            // Send to Google Sheets via Apps Script Web App
+            const response = await fetch(this.googleSheetsUrl, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const responseData = await response.json();
+            
+            if (responseData.error) {
+                throw new Error(responseData.error);
+            }
+            
+            console.log('Successfully sent to Google Sheets:', responseData);
+            return responseData;
+            
+        } catch (error) {
+            console.error('Failed to send to Google Sheets:', error);
+            throw error;
+        }
     }
 }
 
