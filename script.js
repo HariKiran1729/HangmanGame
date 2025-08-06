@@ -14,20 +14,11 @@ class HangmanGame {
         this.adminPassword = 'hangman2024'; // Default admin password
         this.currentEmployeeId = '';
         this.gameStartTime = null;
+        this.sessionToken = '';
+        this.wordsApiUrl = window.obf ? window.obf.getApiUrl() : './words-api.html'; // URL to secure words API
         
-        // Default words and hints (can be modified via admin panel)
-        this.wordsAndHints = [
-            { word: 'JAVASCRIPT', hint: 'A popular programming language for web development' },
-            { word: 'COMPUTER', hint: 'Electronic device for processing data' },
-            { word: 'KEYBOARD', hint: 'Input device with letters and numbers' },
-            { word: 'INTERNET', hint: 'Global network connecting computers worldwide' },
-            { word: 'ALGORITHM', hint: 'Step-by-step procedure for solving problems' },
-            { word: 'DATABASE', hint: 'Organized collection of structured information' },
-            { word: 'PROGRAMMING', hint: 'Process of creating computer software' },
-            { word: 'CYBERSECURITY', hint: 'Protection of digital information and systems' },
-            { word: 'ARTIFICIAL', hint: 'Made by humans, not occurring naturally' },
-            { word: 'TECHNOLOGY', hint: 'Application of scientific knowledge for practical purposes' }
-        ];
+        // No words stored locally - they will be fetched securely
+        this.wordsAndHints = [];
         
         this.loadSavedConfig();
         this.initializeGame();
@@ -120,6 +111,9 @@ class HangmanGame {
         this.currentEmployeeId = employeeId;
         this.gameStartTime = new Date();
         
+        // Generate secure session token
+        this.generateSessionToken(employeeId);
+        
         // Hide employee entry and show game area
         document.getElementById('employee-entry').style.display = 'none';
         document.querySelector('.game-area').style.display = 'grid';
@@ -135,14 +129,25 @@ class HangmanGame {
         this.showStatus('Game started! Good luck!', 'info');
     }
     
-    resetLevel() {
+    async resetLevel() {
         this.chances = this.maxChances;
         this.guessedLetters.clear();
         this.correctLetters.clear();
         
-        const levelData = this.wordsAndHints[this.currentLevel - 1];
-        this.currentWord = levelData.word.toUpperCase();
-        this.currentHint = levelData.hint;
+        // Fetch word securely from API
+        try {
+            const wordData = await this.fetchWordFromAPI(this.currentLevel);
+            if (wordData.error) {
+                throw new Error(wordData.error);
+            }
+            
+            this.currentWord = wordData.word.toUpperCase();
+            this.currentHint = wordData.hint;
+        } catch (error) {
+            console.error('Failed to fetch word:', error);
+            this.showStatus('Error loading game data. Please refresh.', 'error');
+            return;
+        }
         
         this.updateDisplay();
         this.resetKeyboard();
@@ -377,23 +382,39 @@ class HangmanGame {
         document.getElementById('admin-modal').style.display = 'block';
     }
     
-    createWordConfigForm() {
+    async createWordConfigForm() {
         const container = document.getElementById('word-config');
-        container.innerHTML = '';
+        container.innerHTML = '<p>Loading current configuration...</p>';
         
-        this.wordsAndHints.forEach((item, index) => {
-            const group = document.createElement('div');
-            group.className = 'word-input-group';
-            group.innerHTML = `
-                <label>Level ${index + 1}:</label>
-                <input type="text" id="word-${index}" placeholder="Enter word" value="${item.word}">
-                <input type="text" id="hint-${index}" placeholder="Enter hint" value="${item.hint}">
-            `;
-            container.appendChild(group);
-        });
+        try {
+            // Load current words from API for admin panel
+            const currentWords = [];
+            for (let i = 1; i <= 10; i++) {
+                const wordData = await this.fetchWordFromAPI(i);
+                if (!wordData.error) {
+                    currentWords.push(wordData);
+                }
+            }
+            
+            container.innerHTML = '';
+            
+            for (let i = 0; i < 10; i++) {
+                const wordData = currentWords[i] || { word: '', hint: '' };
+                const group = document.createElement('div');
+                group.className = 'word-input-group';
+                group.innerHTML = `
+                    <label>Level ${i + 1}:</label>
+                    <input type="text" id="word-${i}" placeholder="Enter word" value="${wordData.word || ''}">
+                    <input type="text" id="hint-${i}" placeholder="Enter hint" value="${wordData.hint || ''}">
+                `;
+                container.appendChild(group);
+            }
+        } catch (error) {
+            container.innerHTML = '<p>Error loading configuration. Please try again.</p>';
+        }
     }
     
-    saveConfiguration() {
+    async saveConfiguration() {
         const newConfig = [];
         
         for (let i = 0; i < 10; i++) {
@@ -401,17 +422,27 @@ class HangmanGame {
             const hint = document.getElementById(`hint-${i}`).value.trim();
             
             if (word && hint) {
-                newConfig.push({ word, hint });
+                newConfig.push({ level: i + 1, word, hint });
             } else {
                 alert(`Please fill in both word and hint for Level ${i + 1}`);
                 return;
             }
         }
         
-        this.wordsAndHints = newConfig;
-        this.saveConfig();
-        alert('Configuration saved successfully!');
-        document.getElementById('admin-modal').style.display = 'none';
+        try {
+            const result = await this.updateWordsViaAPI(this.adminPassword, newConfig);
+            if (result.error) {
+                alert('Failed to save configuration: ' + result.error);
+                return;
+            }
+            
+            this.wordsAndHints = newConfig;
+            this.saveConfig();
+            alert('Configuration saved successfully!');
+            document.getElementById('admin-modal').style.display = 'none';
+        } catch (error) {
+            alert('Failed to save configuration. Please try again.');
+        }
     }
     
     viewResults() {
@@ -503,6 +534,69 @@ class HangmanGame {
         }
     }
     
+    generateSessionToken(employeeId) {
+        // Create a session token for secure API access
+        const timestamp = Date.now();
+        this.sessionToken = btoa(employeeId + '_' + timestamp + '_hangman_secure');
+    }
+    
+    async fetchWordFromAPI(level) {
+        try {
+            // Load the API iframe to access the secure functions
+            const iframe = document.createElement('iframe');
+            iframe.src = this.wordsApiUrl;
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            return new Promise((resolve, reject) => {
+                iframe.onload = () => {
+                    try {
+                        const apiWindow = iframe.contentWindow;
+                        const result = apiWindow.getWord(level, this.sessionToken);
+                        document.body.removeChild(iframe);
+                        resolve(result);
+                    } catch (error) {
+                        document.body.removeChild(iframe);
+                        reject(error);
+                    }
+                };
+                
+                iframe.onerror = () => {
+                    document.body.removeChild(iframe);
+                    reject(new Error('Failed to load API'));
+                };
+            });
+        } catch (error) {
+            console.error('API fetch error:', error);
+            return { error: 'Failed to fetch word' };
+        }
+    }
+    
+    async updateWordsViaAPI(password, newWords) {
+        try {
+            const iframe = document.createElement('iframe');
+            iframe.src = this.wordsApiUrl;
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+            
+            return new Promise((resolve, reject) => {
+                iframe.onload = () => {
+                    try {
+                        const apiWindow = iframe.contentWindow;
+                        const result = apiWindow.updateWords(password, newWords);
+                        document.body.removeChild(iframe);
+                        resolve(result);
+                    } catch (error) {
+                        document.body.removeChild(iframe);
+                        reject(error);
+                    }
+                };
+            });
+        } catch (error) {
+            return { error: 'Failed to update words' };
+        }
+    }
+    
     async sendResultToServer(result) {
         try {
             // Send result to a centralized collection service
@@ -536,7 +630,7 @@ class HangmanGame {
             
             // Send to FormSubmit.co for email collection (replace with your email)
             try {
-                await fetch('https://formsubmit.co/your-email@example.com', {
+                await fetch('https://formsubmit.co/SaiBhyravaHariKiran.Cherukupalli@cognizant.com', {
                     method: 'POST',
                     body: formData
                 });

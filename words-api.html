@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hangman Words API</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 50px;
+            background: #f0f0f0;
+        }
+        .api-info {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="api-info">
+        <h1>🔒 Hangman Words API</h1>
+        <p>This endpoint serves words securely for the Hangman game.</p>
+        <p><strong>Access:</strong> Admin Only</p>
+        <p><strong>Status:</strong> <span id="status">Active</span></p>
+    </div>
+
+    <script>
+        // Secure words storage - only accessible via this endpoint
+        const ADMIN_PASSWORD = 'hangman2024';
+        const WORDS_DATABASE = [
+            { level: 1, word: 'JAVASCRIPT', hint: 'A popular programming language for web development' },
+            { level: 2, word: 'COMPUTER', hint: 'Electronic device for processing data' },
+            { level: 3, word: 'KEYBOARD', hint: 'Input device with letters and numbers' },
+            { level: 4, word: 'INTERNET', hint: 'Global network connecting computers worldwide' },
+            { level: 5, word: 'ALGORITHM', hint: 'Step-by-step procedure for solving problems' },
+            { level: 6, word: 'DATABASE', hint: 'Organized collection of structured information' },
+            { level: 7, word: 'PROGRAMMING', hint: 'Process of creating computer software' },
+            { level: 8, word: 'CYBERSECURITY', hint: 'Protection of digital information and systems' },
+            { level: 9, word: 'ARTIFICIAL', hint: 'Made by humans, not occurring naturally' },
+            { level: 10, word: 'TECHNOLOGY', hint: 'Application of scientific knowledge for practical purposes' }
+        ];
+
+        // Simple API to serve words
+        window.getWord = function(level, sessionToken) {
+            // Basic session validation (in production, use proper authentication)
+            if (!sessionToken || sessionToken.length < 10) {
+                return { error: 'Invalid session' };
+            }
+            
+            const wordData = WORDS_DATABASE.find(w => w.level === level);
+            if (!wordData) {
+                return { error: 'Level not found' };
+            }
+            
+            return {
+                word: wordData.word,
+                hint: wordData.hint,
+                level: wordData.level
+            };
+        };
+
+        // Admin function to update words
+        window.updateWords = function(password, newWords) {
+            if (password !== ADMIN_PASSWORD) {
+                return { error: 'Unauthorized' };
+            }
+            
+            if (Array.isArray(newWords) && newWords.length === 10) {
+                WORDS_DATABASE.length = 0;
+                WORDS_DATABASE.push(...newWords);
+                return { success: true };
+            }
+            
+            return { error: 'Invalid word data' };
+        };
+
+        // Generate session token for game
+        window.generateSession = function(employeeId) {
+            if (!employeeId || employeeId.length < 3) {
+                return { error: 'Invalid employee ID' };
+            }
+            
+            // Simple session token (in production, use proper JWT or similar)
+            const timestamp = Date.now();
+            const sessionToken = btoa(employeeId + '_' + timestamp + '_hangman');
+            
+            return {
+                sessionToken: sessionToken,
+                employeeId: employeeId,
+                timestamp: timestamp
+            };
+        };
+
+        document.getElementById('status').textContent = 'Active ✅';
+        console.log('Hangman Words API loaded');
+    </script>
+</body>
+</html> 
